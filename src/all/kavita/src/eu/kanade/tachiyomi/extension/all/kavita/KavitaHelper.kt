@@ -35,7 +35,7 @@ class KavitaHelper {
     }
 
     fun getIdFromUrl(url: String): Int {
-        return url.split("/").last().toInt()
+        return url!!.split("/").last().toInt()
     }
 
     fun createSeriesDto(obj: SeriesDto, baseUrl: String, apiKey: String): SManga =

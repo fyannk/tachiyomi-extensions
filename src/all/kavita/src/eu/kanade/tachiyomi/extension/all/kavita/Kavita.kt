@@ -10,6 +10,7 @@ import androidx.preference.MultiSelectListPreference
 import eu.kanade.tachiyomi.AppInfo
 import eu.kanade.tachiyomi.extension.all.kavita.dto.AuthenticationDto
 import eu.kanade.tachiyomi.extension.all.kavita.dto.ChapterDto
+import eu.kanade.tachiyomi.extension.all.kavita.dto.Genres
 import eu.kanade.tachiyomi.extension.all.kavita.dto.MangaFormat
 import eu.kanade.tachiyomi.extension.all.kavita.dto.MetadataAgeRatings
 import eu.kanade.tachiyomi.extension.all.kavita.dto.MetadataCollections
@@ -367,39 +368,42 @@ class Kavita(private val suffix: String = "") : ConfigurableSource, UnmeteredSou
 
     override fun mangaDetailsRequest(manga: SManga): Request {
         val serieId = helper.getIdFromUrl(manga.url)
-        val foundSerie = series.find { dto -> dto.id == serieId }
+        val regex = """^ Library (?<libname>.*) \((?<libid>\d+)\)$""".toRegex()
+        val curlib = manga.genre?.split(',')
+        val curlibfiltered = curlib?.filter { regex.matches(it) }
+        val curlibmapped = curlibfiltered?.map { regex.find(it) }
+        val libname = curlibmapped?.get(0)?.groups?.get("libname")?.value
+        val libid = curlibmapped?.get(0)?.groups?.get("libid")?.value
+        Log.v(LOG_TAG, "Debug mangaDetailsRequest: $baseUrl/library/$libid/series/$serieId")
         return GET(
-            "$baseUrl/library/${foundSerie!!.libraryId}/series/$serieId",
+            "$baseUrl/library/$libid/series/$serieId",
             headersBuilder().build(),
         )
     }
 
     override fun mangaDetailsParse(response: Response): SManga {
         val result = response.parseAs<SeriesMetadataDto>()
-
-        val existingSeries = series.find { dto -> dto.id == result.seriesId }
-        if (existingSeries != null) {
-            val manga = helper.createSeriesDto(existingSeries, apiUrl, apiKey)
-            manga.url = "$apiUrl/Series/${result.seriesId}"
-            manga.artist = result.coverArtists.joinToString { it.name }
-            manga.description = result.summary
-            manga.author = result.writers.joinToString { it.name }
-            manga.genre = result.genres.joinToString { it.title }
-            manga.thumbnail_url = "$apiUrl/image/series-cover?seriesId=${result.seriesId}&apiKey=$apiKey"
-
-            return manga
-        }
         val serieDto = client.newCall(GET("$apiUrl/Series/${result.seriesId}", headersBuilder().build()))
             .execute()
             .parseAs<SeriesDto>()
-
+        var curgenres = (result.genres + result.tags)
+        curgenres += Genres("Library ${serieDto.libraryName} (${serieDto.libraryId})")
         return SManga.create().apply {
             url = "$apiUrl/Series/${result.seriesId}"
             artist = result.coverArtists.joinToString { it.name }
             description = result.summary
             author = result.writers.joinToString { it.name }
-            genre = result.genres.joinToString { it.title }
+            genre = curgenres.distinct().joinToString { it.title }
             title = serieDto.name
+            thumbnail_url = "$apiUrl/image/series-cover?seriesId=${result.seriesId}&apiKey=$apiKey"
+            status = when (result.publicationStatus) {
+                4 -> SManga.PUBLISHING_FINISHED
+                2 -> SManga.COMPLETED
+                0 -> SManga.ONGOING
+                3 -> SManga.CANCELLED
+                1 -> SManga.ON_HIATUS
+                else -> SManga.UNKNOWN
+            }
         }
     }
 

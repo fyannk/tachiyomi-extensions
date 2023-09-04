@@ -60,9 +60,10 @@ data class SeriesMetadataDto(
     val writers: List<Person> = emptyList(),
     val coverArtists: List<Person> = emptyList(),
     val genres: List<Genres> = emptyList(),
+    val tags: List<Genres> = emptyList(),
     val seriesId: Int,
     val ageRating: Int,
-
+    val publicationStatus: Int,
 )
 
 @Serializable
